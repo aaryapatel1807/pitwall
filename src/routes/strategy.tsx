@@ -158,6 +158,8 @@ function SimLoading() {
 
 function StrategyContent() {
   const { user } = useUser();
+  const [raceList, setRaceList] = useState<{ label: string; round: number }[]>(RACES_FALLBACK);
+  const [raceYear, setRaceYear] = useState(2026);
   const [race, setRace] = useState("1");
   const [driverId, setDriverId] = useState("");
   const [driverList, setDriverList] = useState<ErgastDriver[]>([]);
@@ -175,27 +177,49 @@ function StrategyContent() {
     if (user?.id) setSaved(loadStrategies(user.id));
   }, [user?.id]);
 
-  // Fetch drivers for the selected race round.
+  // Load 2026 season calendar
+  useEffect(() => {
+    getSeason(2026).then((races: ErgastRace[]) => {
+      if (races.length > 0) {
+        // Only show completed races (have happened already) + next upcoming
+        const now = Date.now();
+        const relevant = races.filter((r) => {
+          const ts = new Date(`${r.date}T${r.time ?? "13:00:00Z"}`).getTime();
+          return ts <= now + 7 * 24 * 3600_000; // up to 1 week ahead
+        });
+        const list = relevant.map((r) => ({
+          label: r.raceName.replace(" Grand Prix", " GP"),
+          round: parseInt(r.round, 10),
+        }));
+        if (list.length > 0) {
+          setRaceList(list);
+          setRace(String(list[0].round));
+          setRaceYear(2026);
+        }
+      }
+    }).catch(() => {/* keep fallback */});
+  }, []);
+
+  // Load drivers for the selected round from real 2026 data
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         const round = parseInt(race, 10);
-        const { list } = await ergast.driversByRound(2024, round);
+        // Use the season-level driver list since per-round may not be available yet
+        const drivers = await getDrivers(raceYear);
         if (!active) return;
-        setDriverList(list);
-        setDriverId((prev) => (list.some((d) => d.driverId === prev) ? prev : list[0]?.driverId ?? ""));
+        setDriverList(drivers);
+        setDriverId((prev) => (drivers.some((d) => d.driverId === prev) ? prev : drivers[0]?.driverId ?? ""));
       } catch (e) {
         console.warn("[PitWall][strategy] driver fetch failed", e);
       }
     })();
-    return () => {
-      active = false;
-    };
-  }, [race]);
+    return () => { active = false; };
+  }, [race, raceYear]);
 
   const selectedDriver = driverList.find((d) => d.driverId === driverId);
-  const color = driverColor(selectedDriver);
+  const color = driverColor(selectedDriver, "");
 
   const update = (id: number, patch: Partial<Stint>) =>
     setStints((s) => s.map((st) => (st.id === id ? { ...st, ...patch } : st)));
@@ -211,12 +235,11 @@ function StrategyContent() {
     setResult(null);
     const start = Date.now();
     const res = await simulateStrategy({
-      year: 2024,
+      year: raceYear,
       round: parseInt(race, 10),
       driverId,
       stints: stints.map((s) => ({ compound: toUpperCompound(s.compound), lapStart: s.from, lapEnd: s.to })),
     });
-    // Keep the loading sequence visible briefly so messages can cycle.
     const elapsed = Date.now() - start;
     if (elapsed < 2400) await new Promise((r) => setTimeout(r, 2400 - elapsed));
     setResult(res);
@@ -225,10 +248,11 @@ function StrategyContent() {
 
   const handleSave = () => {
     if (!user?.id || !result) return;
+    const raceLabel = raceList.find((r) => r.round === parseInt(race, 10))?.label ?? `Round ${race}`;
     const entry: SavedStrategy = {
       id: `${Date.now()}`,
       userId: user.id,
-      raceName: `2024 ${RACES_2024.find((r) => r.round === parseInt(race, 10))?.label ?? race}`,
+      raceName: `${raceYear} ${raceLabel}`,
       driverName: selectedDriver ? `${selectedDriver.givenName} ${selectedDriver.familyName}` : driverId,
       stints: stints.map((s) => ({ compound: s.compound, lapStart: s.from, lapEnd: s.to })),
       predictedFinish: result.predictedPosition,
@@ -295,13 +319,13 @@ function StrategyContent() {
           <SectionLabel>Strategy Builder</SectionLabel>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
-              <SectionLabel>Race (2024)</SectionLabel>
+              <SectionLabel>Race (2026)</SectionLabel>
               <Select value={race} onValueChange={setRace}>
                 <SelectTrigger className="mt-1.5 bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {RACES_2024.map((r) => (
+                  {raceList.map((r) => (
                     <SelectItem key={r.round} value={String(r.round)}>
                       {r.label}
                     </SelectItem>

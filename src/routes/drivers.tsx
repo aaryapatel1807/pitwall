@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, ClientOnly } from "@tanstack/react-router";
 
 import {
   Area,
@@ -20,9 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SectionLabel } from "@/components/Shared";
-import { teamColorByName } from "@/lib/api-live";
-import { getDrivers, getDriverSeasonStats, type ErgastDriver } from "@/lib/api-live";
+import { SectionLabel, LoadingSkeleton } from "@/components/Shared";
+import { teamColorByName, getDrivers, getDriverSeasonStats, type ErgastDriver } from "@/lib/api-live";
 
 export const Route = createFileRoute("/drivers")({
   head: () => ({
@@ -32,19 +31,32 @@ export const Route = createFileRoute("/drivers")({
       { property: "og:title", content: "Driver Analytics — PitWall" },
     ],
   }),
-  component: DriversPage,
+  component: DriversPageWrapper,
 });
+
+function DriversPageWrapper() {
+  return (
+    <ClientOnly
+      fallback={
+        <main className="mx-auto max-w-[1400px] px-4 py-8 lg:px-6">
+          <SectionLabel>Driver Analytics · 2026 Season</SectionLabel>
+          <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-tight text-[#15151E]">
+            Head To Head
+          </h1>
+          <div className="mt-8">
+            <LoadingSkeleton rows={6} />
+          </div>
+        </main>
+      }
+    >
+      <DriversPage />
+    </ClientOnly>
+  );
+}
 
 // ---------- helpers ----------
 function teamColor(constructorName: string): string {
   return teamColorByName(constructorName);
-}
-
-function lapToSec(t?: string): number | null {
-  if (!t) return null;
-  const parts = t.split(":");
-  if (parts.length === 2) return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
-  return parseFloat(t) || null;
 }
 
 interface DriverData {

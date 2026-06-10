@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { SectionLabel, LoadingSkeleton, EmptyState } from "@/components/Shared";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { useAutoRefresh, useUpdatedBadge, getSeason, getRaceResult, flagFor, teamColorByName, type ErgastRace, TTL } from "@/lib/api-live";
+import { useAutoRefresh, useUpdatedBadge, getSeason, getRaceResult, flagFor, type ErgastRace, TTL } from "@/lib/api-live";
 
 // Local alias so the rest of the file keeps minimal changes
 type ErgastRaceFull = ErgastRace;
@@ -18,19 +18,6 @@ export const Route = createFileRoute("/calendar")({
   }),
   component: CalendarWrapper,
 });
-
-const FLAGS: Record<string, string> = {
-  Bahrain: "🇧🇭", "Saudi Arabia": "🇸🇦", Australia: "🇦🇺", Japan: "🇯🇵", China: "🇨🇳",
-  USA: "🇺🇸", "United States": "🇺🇸", Italy: "🇮🇹", Monaco: "🇲🇨", Canada: "🇨🇦",
-  Spain: "🇪🇸", Austria: "🇦🇹", UK: "🇬🇧", "United Kingdom": "🇬🇧", Hungary: "🇭🇺",
-  Belgium: "🇧🇪", Netherlands: "🇳🇱", Azerbaijan: "🇦🇿", Singapore: "🇸🇬", Mexico: "🇲🇽",
-  Brazil: "🇧🇷", Qatar: "🇶🇦", UAE: "🇦🇪", "United Arab Emirates": "🇦🇪", France: "🇫🇷",
-  Germany: "🇩🇪", Portugal: "🇵🇹", Turkey: "🇹🇷", Russia: "🇷🇺", "Saudi": "🇸🇦",
-};
-
-function flagFor(country?: string): string {
-  return (country && FLAGS[country]) || "🏁";
-}
 
 function raceTime(r: ErgastRaceFull): number {
   return new Date(`${r.date}T${r.time ?? "13:00:00Z"}`).getTime();
@@ -181,17 +168,25 @@ function CalendarPage() {
     <main>
       <div className="pit-noise bg-[#15151E]">
         <div className="mx-auto max-w-[1400px] px-4 py-6 lg:px-6">
-          <h1 className="text-xl font-extrabold uppercase tracking-tight text-white md:text-2xl">
-            2025 FIA Formula One World Championship
-          </h1>
-          <p className="mt-1 text-sm font-semibold uppercase tracking-wide text-[#A0A0B0]">
-            {races.length && completedCount >= races.length
-              ? `Season Complete · ${races.length} Rounds`
-              : `Round ${Math.min(completedCount + 1, races.length || 24)} of ${races.length || 24}`}
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-extrabold uppercase tracking-tight text-white md:text-2xl">
+                2026 FIA Formula One World Championship
+              </h1>
+              <p className="mt-1 text-sm font-semibold uppercase tracking-wide text-[#A0A0B0]">
+                {races.length && completedCount >= races.length
+                  ? `Season Complete · ${races.length} Rounds`
+                  : `Round ${Math.min(completedCount + 1, races.length || 24)} of ${races.length || 24}`}
+              </p>
+            </div>
+            {updatedText && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#A0A0B0]">
+                {updatedText}
+              </span>
+            )}
+          </div>
         </div>
       </div>
-      {/* spacer end */}
 
       <div className="mx-auto max-w-[1400px] px-4 py-8 lg:px-6">
         {loading ? (
@@ -229,12 +224,19 @@ function CalendarPage() {
                     <p className="text-xs text-[#A0A0B0]">{r.Circuit.Location?.locality}</p>
 
                     {completed ? (
-                      <Link
-                        to="/live"
-                        className="mt-3 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#E8002D] hover:text-[#CC0027]"
-                      >
-                        View Results <ArrowRight size={13} />
-                      </Link>
+                      <div>
+                        {winners[r.round] && (
+                          <p className="mt-2 text-xs font-bold text-[#E8002D]">
+                            🏆 {winners[r.round]}
+                          </p>
+                        )}
+                        <Link
+                          to="/live"
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#E8002D] hover:text-[#CC0027]"
+                        >
+                          View Results <ArrowRight size={13} />
+                        </Link>
+                      </div>
                     ) : (
                       <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#6B6B6B]">
                         In {Math.max(0, daysUntil)} days

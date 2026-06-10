@@ -309,6 +309,21 @@ function TeamDrawer({ row, onClose }: { row: TeamRow | null; onClose: () => void
 function TeamsPage() {
   const data = useTeamsData();
   const [selected, setSelected] = useState<TeamRow | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Track when data arrives
+  const prevLoading = data.loading;
+  useEffect(() => {
+    if (!prevLoading && data.rows.length > 0) setLastUpdated(new Date());
+  }, [prevLoading, data.rows.length]);
+
+  const updatedText = (() => {
+    if (!lastUpdated) return "";
+    const mins = Math.floor((Date.now() - lastUpdated.getTime()) / 60_000);
+    if (mins < 1) return "Updated just now";
+    if (mins < 60) return `Updated ${mins}m ago`;
+    return `Updated ${Math.floor(mins / 60)}h ago`;
+  })();
 
   const teamLines = useMemo(() => data.rows.slice(0, 5).map((r) => r.name), [data.rows]);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
@@ -321,10 +336,19 @@ function TeamsPage() {
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-8 lg:px-6">
-      <SectionLabel>Team Dashboard</SectionLabel>
-      <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-tight text-[#15151E]">
-        Constructor Standings
-      </h1>
+      <div className="flex items-end justify-between">
+        <div>
+          <SectionLabel>Team Dashboard · 2026 Season</SectionLabel>
+          <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-tight text-[#15151E]">
+            Constructor Standings
+          </h1>
+        </div>
+        {updatedText && (
+          <span className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#A0A0B0]">
+            {updatedText}
+          </span>
+        )}
+      </div>
 
       {/* STANDINGS TABLE */}
       <div className="mt-6 overflow-x-auto rounded-xl border border-[#E5E5E5] bg-white">

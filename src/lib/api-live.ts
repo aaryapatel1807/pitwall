@@ -78,10 +78,14 @@ export function setCache<T>(key: string, data: T, ttl: number): void {
   }
 }
 
-// Safe JSON fetch — never throws
+// Safe JSON fetch — never throws, SSR-safe
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    // AbortSignal.timeout is not available in all Node.js environments (SSR)
+    const signal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(12_000)
+      : undefined;
+    const res = await fetch(url, signal ? { signal } : {});
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as T;
   } catch (e) {
@@ -473,11 +477,8 @@ export function useAutoRefresh<T>(
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Stable ref so the interval callback always calls the latest fetchFn
   const fnRef = useRef(fetchFn);
   fnRef.current = fetchFn;
-
-  const effectiveInterval = isRaceWeekend() ? Math.min(intervalMs, 5 * 60_000) : intervalMs;
 
   const run = useCallback(async () => {
     try {
@@ -498,12 +499,14 @@ export function useAutoRefresh<T>(
   }, []);
 
   useEffect(() => {
+    // isRaceWeekend() reads localStorage — must stay inside useEffect (client-only)
+    const effectiveInterval = isRaceWeekend() ? Math.min(intervalMs, 5 * 60_000) : intervalMs;
     setLoading(true);
     run();
     timer.current = setInterval(run, effectiveInterval);
     return () => { if (timer.current) clearInterval(timer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, effectiveInterval]);
+  }, [...deps, intervalMs]);
 
   return { data, loading, error, lastUpdated };
 }
