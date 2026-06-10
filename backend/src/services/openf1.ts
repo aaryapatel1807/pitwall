@@ -76,7 +76,7 @@ export interface OF1Lap {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function fetchOf1<T>(
+export async function fetchOf1<T>(
   path: string,
   ttl: number = DEFAULT_TTL,
 ): Promise<T> {

@@ -1,4 +1,5 @@
 import { Server as HttpServer } from "http";
+import { fetchOf1 } from './openf1'
 import { Server as SocketServer, Socket } from "socket.io";
 import {
   openf1,
@@ -123,12 +124,15 @@ function handleConnection(socket: Socket): void {
       const key = currentSession.session_key;
       const live = isSessionLive(currentSession);
       try {
-        const [positions, intervals, stints, pits] = await Promise.all([
-          openf1.positions(key, live),
-          openf1.intervals(key, live),
-          openf1.stints(key, live),
-          openf1.pits(key, live),
-        ]);
+        const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+        const positions = await fetchOf1(`position?session_key=${key}`)
+        await delay(400)
+        const intervals = await fetchOf1(`intervals?session_key=${key}`)
+        await delay(400)
+        const stints = await fetchOf1(`stints?session_key=${key}`)
+        await delay(400)
+        const pits = await fetchOf1(`pit?session_key=${key}`)
+
         socket.emit("position_update", positions);
         socket.emit("interval_update", intervals);
         socket.emit("stint_update", stints);
