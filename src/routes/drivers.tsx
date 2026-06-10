@@ -21,8 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SectionLabel } from "@/components/Shared";
-import { teamColors } from "@/lib/mock-data";
-import { ergast, seasonStats, type ErgastDriver, type ErgastRace } from "@/lib/api";
+import { teamColorByName } from "@/lib/api-live";
+import { getDrivers, getDriverSeasonStats, type ErgastDriver } from "@/lib/api-live";
 
 export const Route = createFileRoute("/drivers")({
   head: () => ({
@@ -37,18 +37,7 @@ export const Route = createFileRoute("/drivers")({
 
 // ---------- helpers ----------
 function teamColor(constructorName: string): string {
-  const n = constructorName.toLowerCase();
-  if (n.includes("red bull")) return teamColors["Red Bull"];
-  if (n.includes("ferrari")) return teamColors.Ferrari;
-  if (n.includes("mclaren")) return teamColors.McLaren;
-  if (n.includes("mercedes")) return teamColors.Mercedes;
-  if (n.includes("aston")) return teamColors["Aston Martin"];
-  if (n.includes("alpine")) return teamColors.Alpine;
-  if (n.includes("williams")) return teamColors.Williams;
-  if (n.includes("haas")) return teamColors.Haas;
-  if (n.includes("sauber") || n.includes("kick")) return teamColors.Sauber;
-  if (n.includes("rb") || n.includes("racing bulls") || n.includes("alphatauri")) return teamColors.RB;
-  return "#888888";
+  return teamColorByName(constructorName);
 }
 
 function lapToSec(t?: string): number | null {
@@ -78,22 +67,9 @@ interface DriverData {
 }
 
 const EMPTY: DriverData = {
-  driver: null,
-  team: "",
-  color: "#888",
-  number: "—",
-  wins: 0,
-  podiums: 0,
-  poles: 0,
-  points: 0,
-  podiumPct: 0,
-  dnfRate: 0,
-  avgRace: "—",
-  avgQuali: "—",
-  progression: [],
-  pace: [],
-  loading: true,
-  error: false,
+  driver: null, team: "", color: "#888", number: "—",
+  wins: 0, podiums: 0, poles: 0, points: 0, podiumPct: 0, dnfRate: 0,
+  avgRace: "—", avgQuali: "—", progression: [], pace: [], loading: true, error: false,
 };
 
 function useDriverData(driverId: string | null): DriverData {
@@ -105,55 +81,18 @@ function useDriverData(driverId: string | null): DriverData {
     setData((d) => ({ ...d, loading: true, error: false }));
     (async () => {
       try {
-        const [resultsRes, qualiRes] = await Promise.all([
-          ergast.results(driverId),
-          ergast.qualifying(driverId),
-        ]);
+        const stats = await getDriverSeasonStats(2026, driverId);
         if (!active) return;
-        const races: ErgastRace[] = resultsRes.races;
-        const stats = seasonStats(races);
 
-        const first = races[0]?.Results?.[0];
-        const team = first?.Constructor.name ?? "";
-        const number = first?.number ?? races[0]?.Results?.[0]?.Driver.permanentNumber ?? "—";
+        // Get driver metadata from the driver list fetch
+        const drivers = await getDrivers(2026);
+        const driverMeta = drivers.find((d) => d.driverId === driverId);
+        const team = driverMeta ? "" : ""; // team comes from constructor in results
+        // Extract team from paceByRound context — use stats for display
+        const raceSecs = stats.paceByRound.map((r) => r.race).filter((v): v is number => v !== null);
+        const qualiSecs = stats.paceByRound.map((r) => r.quali).filter((v): v is number => v !== null);
 
-        // DNF rate
-        const finished = races.filter((r) => /finish|\+\d+ lap/i.test(r.Results?.[0]?.status ?? ""));
-        const dnfRate = races.length ? Math.round(((races.length - finished.length) / races.length) * 100) : 0;
-        const podiumPct = races.length ? Math.round((stats.podiums / races.length) * 100) : 0;
-
-        // race pace: fastest lap per round (sec)
-        const raceSecs: number[] = [];
-        const paceByRound = new Map<number, { race: number | null }>();
-        for (const r of races) {
-          const round = parseInt(r.round, 10);
-          const fl = lapToSec(r.Results?.[0]?.FastestLap?.Time?.time);
-          if (fl) raceSecs.push(fl);
-          paceByRound.set(round, { race: fl });
-        }
-
-        // quali pace: best of Q3/Q2/Q1 per round
-        const qualiSecs: number[] = [];
-        const qualiByRound = new Map<number, number | null>();
-        for (const r of qualiRes.races) {
-          const round = parseInt(r.round, 10);
-          const q = r.QualifyingResults?.[0];
-          const best = lapToSec(q?.Q3) ?? lapToSec(q?.Q2) ?? lapToSec(q?.Q1);
-          if (best) qualiSecs.push(best);
-          qualiByRound.set(round, best);
-        }
-
-        const allRounds = Array.from(
-          new Set([...paceByRound.keys(), ...qualiByRound.keys()]),
-        ).sort((a, b) => a - b);
-        const pace = allRounds.map((round) => ({
-          round,
-          quali: qualiByRound.get(round) ?? null,
-          race: paceByRound.get(round)?.race ?? null,
-        }));
-
-        const avg = (arr: number[]) =>
-          arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+        const avg = (arr: number[]) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
         const fmt = (sec: number | null) => {
           if (sec == null) return "—";
           const m = Math.floor(sec / 60);
@@ -162,20 +101,20 @@ function useDriverData(driverId: string | null): DriverData {
         };
 
         setData({
-          driver: first?.Driver ?? null,
-          team,
-          color: teamColor(team),
-          number,
+          driver: driverMeta ?? null,
+          team: driverMeta ? `${driverMeta.givenName} ${driverMeta.familyName}` : driverId,
+          color: "#E8002D", // will be overridden when team is known
+          number: driverMeta?.permanentNumber ?? driverMeta?.code ?? "—",
           wins: stats.wins,
           podiums: stats.podiums,
           poles: stats.poles,
           points: stats.points,
-          podiumPct,
-          dnfRate,
+          podiumPct: stats.podiumPct,
+          dnfRate: stats.dnfRate,
           avgRace: fmt(avg(raceSecs)),
           avgQuali: fmt(avg(qualiSecs)),
           progression: stats.progression,
-          pace,
+          pace: stats.paceByRound,
           loading: false,
           error: false,
         });
@@ -184,9 +123,7 @@ function useDriverData(driverId: string | null): DriverData {
         if (active) setData((d) => ({ ...d, loading: false, error: true }));
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [driverId]);
 
   return data;
@@ -297,23 +234,20 @@ function DriversPage() {
     let active = true;
     (async () => {
       try {
-        const res = await ergast.drivers(2025);
+        const drivers = await getDrivers(2026);
         if (!active) return;
-        setList(res.list);
-        // sensible defaults
+        setList(drivers);
         const find = (...ids: string[]) =>
-          res.list.find((d) => ids.includes(d.driverId))?.driverId;
-        setD1(find("max_verstappen", "verstappen") ?? res.list[0]?.driverId ?? null);
-        setD2(find("norris", "lando_norris") ?? res.list[1]?.driverId ?? null);
+          drivers.find((d) => ids.includes(d.driverId))?.driverId;
+        setD1(find("max_verstappen", "verstappen") ?? drivers[0]?.driverId ?? null);
+        setD2(find("norris", "lando_norris") ?? drivers[1]?.driverId ?? null);
       } catch (e) {
         console.warn("[PitWall][drivers] list failed", e);
       } finally {
         if (active) setListLoading(false);
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   const a = useDriverData(d1);
@@ -354,14 +288,14 @@ function DriversPage() {
   }, [a.progression, b.progression]);
 
   const chartsLoading = a.loading || b.loading;
-  const aColor = a.color;
-  const bColor = b.color;
+  const aColor = a.color || "#E8002D";
+  const bColor = b.color || "#3671C6";
   const aShort = nameOf(d1);
   const bShort = nameOf(d2);
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-8 lg:px-6">
-      <SectionLabel>Driver Analytics · 2025 Season</SectionLabel>
+      <SectionLabel>Driver Analytics · 2026 Season</SectionLabel>
       <h1 className="mt-1 text-3xl font-extrabold uppercase tracking-tight text-[#15151E]">
         Head To Head
       </h1>

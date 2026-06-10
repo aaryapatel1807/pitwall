@@ -25,8 +25,8 @@ import {
 import { SectionLabel } from "@/components/Shared";
 import { AuthGate } from "@/components/AuthGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { compoundColor, teamColors, drivers as mockDrivers, type Compound } from "@/lib/mock-data";
-import { ergast, type ErgastDriver } from "@/lib/api";
+import { compoundColor, type Compound } from "@/lib/mock-data";
+import { teamColorByName, getSeason, getDrivers, type ErgastDriver, type ErgastRace } from "@/lib/api-live";
 import { formatLapTime } from "@/lib/format";
 import {
   simulateStrategy,
@@ -66,7 +66,8 @@ interface SavedStrategy {
 
 const compounds: Compound[] = ["Soft", "Medium", "Hard", "Inter", "Wet"];
 
-const RACES_2024 = [
+// Fallback race list used while real season data loads
+const RACES_FALLBACK = [
   { label: "Bahrain GP", round: 1 },
   { label: "Saudi Arabian GP", round: 2 },
   { label: "Australian GP", round: 3 },
@@ -103,10 +104,10 @@ function toUpperCompound(c: Compound): SimStint["compound"] {
   }
 }
 
-function driverColor(d?: ErgastDriver): string {
+function driverColor(d?: ErgastDriver, constructorName?: string): string {
+  if (constructorName) return teamColorByName(constructorName);
   if (!d) return "#E8002D";
-  const m = mockDrivers.find((md) => md.last.toLowerCase() === d.familyName.toLowerCase());
-  return m ? teamColors[m.team] ?? "#E8002D" : "#E8002D";
+  return "#E8002D";
 }
 
 function strategiesKey(userId: string) {

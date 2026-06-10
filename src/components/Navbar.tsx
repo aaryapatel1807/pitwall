@@ -12,6 +12,7 @@ const navLinks = [
   { to: "/calendar", label: "Calendar" },
   { to: "/strategy", label: "Strategy" },
   { to: "/insights", label: "Insights" },
+  { to: "/predict", label: "Predict" },
 ];
 
 function LiveBadge() {

@@ -3,7 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { SectionLabel, LoadingSkeleton, EmptyState } from "@/components/Shared";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { ergast, type ErgastRaceFull } from "@/lib/api";
+import { useAutoRefresh, useUpdatedBadge, getSeason, getRaceResult, flagFor, teamColorByName, type ErgastRace, TTL } from "@/lib/api-live";
+
+// Local alias so the rest of the file keeps minimal changes
+type ErgastRaceFull = ErgastRace;
 
 export const Route = createFileRoute("/calendar")({
   head: () => ({
@@ -119,22 +122,44 @@ function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [active, setActive] = useState<ErgastRaceFull | null>(null);
+  // Fetch winner for completed races lazily
+  const [winners, setWinners] = useState<Record<string, string>>({});
+
+  const { data: season, loading: seasonLoading, error: seasonError, lastUpdated } =
+    useAutoRefresh(() => getSeason(2026), [], TTL.CALENDAR);
 
   useEffect(() => {
-    let on = true;
+    if (season) { setRaces(season); setLoading(false); setError(false); }
+    else if (!seasonLoading) { setError(true); setLoading(false); }
+    else { setLoading(seasonLoading); }
+  }, [season, seasonLoading, seasonError]);
+
+  // Fetch P1 driver for completed rounds (lazy, non-blocking)
+  useEffect(() => {
+    if (!races.length) return;
+    const now = Date.now();
+    const completed = races.filter((r) => raceTime(r) < now);
+    let active = true;
     (async () => {
-      try {
-        const { races } = await ergast.schedule(2025);
-        if (!on) return;
-        setRaces(races);
-        setLoading(false);
-      } catch (e) {
-        console.warn("[PitWall][calendar] failed", e);
-        if (on) { setError(true); setLoading(false); }
+      for (const r of completed) {
+        const rnd = parseInt(r.round, 10);
+        if (winners[r.round]) continue;
+        const result = await getRaceResult(2026, rnd);
+        if (!active) return;
+        const p1 = result?.Results?.[0];
+        if (p1) {
+          setWinners((prev) => ({
+            ...prev,
+            [r.round]: `${p1.Driver.givenName[0]}. ${p1.Driver.familyName}`,
+          }));
+        }
       }
     })();
-    return () => { on = false; };
-  }, []);
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [races]);
+
+  const updatedText = useUpdatedBadge(lastUpdated);
 
   const now = Date.now();
   const { nextRound, completedCount } = useMemo(() => {

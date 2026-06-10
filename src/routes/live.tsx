@@ -18,9 +18,10 @@ import { TirePill } from "@/components/TirePill";
 import { SectionLabel, EmptyState } from "@/components/Shared";
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { teamColors, type Compound } from "@/lib/mock-data";
+import { teamColorByName } from "@/lib/api-live";
 import { timeAgo } from "@/lib/api";
-import { formatLapTime, formatDelta } from "@/lib/format";
+import { formatLapTime } from "@/lib/format";
+import { type Compound } from "@/lib/mock-data";
 import { useRaceSocket, type RaceSocketState } from "@/hooks/use-race-socket";
 
 export const Route = createFileRoute("/live")({
@@ -111,7 +112,7 @@ function buildRows(state: RaceSocketState, prevPos: Map<number, number>): LiveRo
         code: d.name_acronym,
         name: d.full_name,
         team: d.team_name,
-        color: d.team_colour ? `#${d.team_colour}` : teamColors[d.team_name] ?? "#999",
+        color: d.team_colour ? `#${d.team_colour}` : teamColorByName(d.team_name),
         pos,
         gap: fmtGap(intByDriver.get(d.driver_number), pos),
         lastLap: formatLapTime(lapByDriver.get(d.driver_number)?.dur ?? undefined),
@@ -598,7 +599,7 @@ function LivePage() {
   );
 
   const title = state.session
-    ? `2025 ${state.session.country_name} Grand Prix`
+    ? `${state.session.year} ${state.session.country_name} Grand Prix`
     : "Live Race Center";
 
   return (

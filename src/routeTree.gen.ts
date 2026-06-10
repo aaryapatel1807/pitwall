@@ -13,6 +13,7 @@ import { Route as TeamsRouteImport } from './routes/teams'
 import { Route as StrategyRouteImport } from './routes/strategy'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as PredictRouteImport } from './routes/predict'
 import { Route as LiveRouteImport } from './routes/live'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as DriversRouteImport } from './routes/drivers'
@@ -37,6 +38,11 @@ const SignUpRoute = SignUpRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PredictRoute = PredictRouteImport.update({
+  id: '/predict',
+  path: '/predict',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LiveRoute = LiveRouteImport.update({
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/drivers': typeof DriversRoute
   '/insights': typeof InsightsRoute
   '/live': typeof LiveRoute
+  '/predict': typeof PredictRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/strategy': typeof StrategyRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/drivers': typeof DriversRoute
   '/insights': typeof InsightsRoute
   '/live': typeof LiveRoute
+  '/predict': typeof PredictRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/strategy': typeof StrategyRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/drivers': typeof DriversRoute
   '/insights': typeof InsightsRoute
   '/live': typeof LiveRoute
+  '/predict': typeof PredictRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/strategy': typeof StrategyRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/insights'
     | '/live'
+    | '/predict'
     | '/sign-in'
     | '/sign-up'
     | '/strategy'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/insights'
     | '/live'
+    | '/predict'
     | '/sign-in'
     | '/sign-up'
     | '/strategy'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/insights'
     | '/live'
+    | '/predict'
     | '/sign-in'
     | '/sign-up'
     | '/strategy'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   DriversRoute: typeof DriversRoute
   InsightsRoute: typeof InsightsRoute
   LiveRoute: typeof LiveRoute
+  PredictRoute: typeof PredictRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
   StrategyRoute: typeof StrategyRoute
@@ -175,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/predict': {
+      id: '/predict'
+      path: '/predict'
+      fullPath: '/predict'
+      preLoaderRoute: typeof PredictRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/live': {
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   DriversRoute: DriversRoute,
   InsightsRoute: InsightsRoute,
   LiveRoute: LiveRoute,
+  PredictRoute: PredictRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
   StrategyRoute: StrategyRoute,
@@ -229,3 +250,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

@@ -1,0 +1,41 @@
+// Prisma schema for PitWall backend
+// Run: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String          @id @default(cuid())
+  clerkId    String          @unique
+  email      String
+  createdAt  DateTime        @default(now())
+  strategies SavedStrategy[]
+}
+
+model SavedStrategy {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  raceName          String
+  driverId          String
+  stints            Json
+  predictedPosition Int
+  timeDelta         String
+  createdAt         DateTime @default(now())
+}
+
+model CachedRaceResult {
+  id       String   @id @default(cuid())
+  year     Int
+  round    Int
+  data     Json
+  cachedAt DateTime @default(now())
+
+  @@unique([year, round])
+}

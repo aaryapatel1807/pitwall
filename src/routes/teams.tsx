@@ -3,29 +3,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
+  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { SectionLabel, LoadingSkeleton, EmptyState } from "@/components/Shared";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { teamColorFor, drivers as mockDrivers, constructors as mockConstructors } from "@/lib/mock-data";
-import {
-  ergast,
-  of1,
-  latestRaceSession,
-  type ErgastConstructorStanding,
-  type ErgastRaceFull,
-} from "@/lib/api";
+import { teamColorByName, getConstructorStandings, getConstructorStandingsByRound, getSeason, type ErgastConstructorStanding, type ErgastRace } from "@/lib/api-live";
+import { of1, latestRaceSession } from "@/lib/api";
 
 export const Route = createFileRoute("/teams")({
   head: () => ({
@@ -37,6 +21,13 @@ export const Route = createFileRoute("/teams")({
   }),
   component: TeamsPageWrapper,
 });
+
+// Local alias kept for minimal diff
+type ErgastRaceFull = ErgastRace;
+
+function teamColorFor(name: string): string {
+  return teamColorByName(name);
+}
 
 type Pill = "W" | "P" | "DNF" | "—";
 
@@ -91,67 +82,55 @@ function classify(delta: number): Pill {
 
 function useTeamsData(): TeamsData {
   const [data, setData] = useState<TeamsData>({
-    rows: [],
-    progression: [],
-    pit: [],
-    loading: true,
-    error: false,
+    rows: [], progression: [], pit: [], loading: true, error: false,
   });
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [sched, current] = await Promise.all([
-          ergast.schedule(2025),
-          ergast.constructorStandings(2025),
+        const [season, currentStandings] = await Promise.all([
+          getSeason(2026),
+          getConstructorStandings(2026),
         ]);
         const now = Date.now();
-        const completed = sched.races.filter((r) => {
+        const completed = season.filter((r) => {
           const t = new Date(`${r.date}T${r.time ?? "12:00:00Z"}`).getTime();
           return t < now && t > 0;
         });
         const rounds = completed.map((r) => parseInt(r.round, 10)).sort((a, b) => a - b);
 
-        const standings = current.list.length ? current.list : [];
+        const standings = currentStandings.length ? currentStandings : [];
         if (!active) return;
-        // Render the table immediately from current standings (no per-round
-        // dependency) so a rate-limited round never blanks the page.
+
         const baseRows: TeamRow[] = standings.map((s: ErgastConstructorStanding, i) => ({
           pos: parseInt(s.position, 10) || i + 1,
           name: s.Constructor.name,
           color: teamColorFor(s.Constructor.name),
           points: parseFloat(s.points) || 0,
           wins: parseInt(s.wins, 10) || 0,
-          podiums: 0,
-          dnfs: 0,
-          reliability: 100,
-          last5: [],
+          podiums: 0, dnfs: 0, reliability: 100, last5: [],
           trend: [parseFloat(s.points) || 0],
           nationality: s.Constructor.nationality ?? "—",
         }));
         setData((d) => ({ ...d, rows: baseRows, loading: false, error: baseRows.length === 0 }));
 
-        // Per-round standings fetched with limited concurrency + tolerance to
-        // avoid 429 rate-limiting. Failures are skipped, not fatal.
+        // Per-round standings with 3-worker concurrency
         const perRound: { round: number; list: ErgastConstructorStanding[] }[] = [];
         const queue = [...rounds];
         const worker = async () => {
           while (queue.length) {
             const rd = queue.shift()!;
             try {
-              const r = await ergast.constructorStandingsByRound(2025, rd);
-              perRound.push({ round: rd, list: r.list });
-            } catch {
-              /* skip rate-limited / missing round */
-            }
+              const list = await getConstructorStandingsByRound(2026, rd);
+              perRound.push({ round: rd, list });
+            } catch { /* skip */ }
           }
         };
         await Promise.all([worker(), worker(), worker()]);
         perRound.sort((a, b) => a.round - b.round);
         if (!active) return;
 
-        // cumulative points per team per round
         const cumByTeam = new Map<string, number[]>();
         const progression: ProgressionPoint[] = perRound.map(({ round, list }) => {
           const found = completed.find((c) => +c.round === round);
@@ -170,7 +149,6 @@ function useTeamsData(): TeamsData {
         });
         const roundCount = perRound.length;
 
-
         const rows: TeamRow[] = standings.map((s: ErgastConstructorStanding, i) => {
           const name = s.Constructor.name;
           const cum = cumByTeam.get(name) ?? [];
@@ -179,13 +157,11 @@ function useTeamsData(): TeamsData {
           const dnfs = deltas.filter((d) => d <= 0).length;
           const podiums = deltas.filter((d) => d >= 15).length;
           return {
-            pos: parseInt(s.position, 10) || i + 1,
-            name,
+            pos: parseInt(s.position, 10) || i + 1, name,
             color: teamColorFor(name),
             points: parseFloat(s.points) || 0,
             wins: parseInt(s.wins, 10) || 0,
-            podiums,
-            dnfs,
+            podiums, dnfs,
             reliability: roundCount ? Math.round((1 - dnfs / roundCount) * 100) : 100,
             last5,
             trend: cum.slice(-5).length ? cum.slice(-5) : [parseFloat(s.points) || 0],
@@ -193,10 +169,10 @@ function useTeamsData(): TeamsData {
           };
         });
 
-        // Pit efficiency from latest race session
+        // Pit efficiency from latest OpenF1 session
         let pit: PitTeam[] = [];
         try {
-          const sessions = await of1.raceSessions(2025);
+          const sessions = await of1.raceSessions(2026);
           const session = latestRaceSession(sessions.data);
           if (session) {
             const [pits, drv] = await Promise.all([
@@ -215,20 +191,11 @@ function useTeamsData(): TeamsData {
               arr.push(dur);
               byTeam.set(team, arr);
             }
-            pit = [...byTeam.entries()]
-              .map(([team, durs]) => {
-                const avg = durs.reduce((a, b) => a + b, 0) / durs.length;
-                const variance = durs.reduce((a, b) => a + (b - avg) ** 2, 0) / durs.length;
-                return {
-                  team,
-                  color: teamColorFor(team),
-                  avg,
-                  best: Math.min(...durs),
-                  std: Math.sqrt(variance),
-                  count: durs.length,
-                };
-              })
-              .sort((a, b) => a.avg - b.avg);
+            pit = [...byTeam.entries()].map(([team, durs]) => {
+              const avg = durs.reduce((a, b) => a + b, 0) / durs.length;
+              const variance = durs.reduce((a, b) => a + (b - avg) ** 2, 0) / durs.length;
+              return { team, color: teamColorFor(team), avg, best: Math.min(...durs), std: Math.sqrt(variance), count: durs.length };
+            }).sort((a, b) => a.avg - b.avg);
           }
         } catch (e) {
           console.warn("[PitWall][teams] pit data failed", e);
@@ -240,9 +207,7 @@ function useTeamsData(): TeamsData {
         if (active) setData((d) => ({ ...d, loading: false, error: true }));
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   return data;
@@ -285,39 +250,27 @@ function ResultPills({ pills }: { pills: Pill[] }) {
 }
 
 function TeamDrawer({ row, onClose }: { row: TeamRow | null; onClose: () => void }) {
-  const carInfo = mockConstructors.find((c) => row && c.team === row.name.replace(/ F1 Team| Racing| Team/g, ""));
-  const teamDrivers = row
-    ? mockDrivers.filter((d) => row.name.toLowerCase().includes(d.team.toLowerCase().split(" ")[0]))
-    : [];
   return (
     <AnimatePresence>
       {row && (
         <>
           <motion.div
             className="fixed inset-0 z-[60] bg-black/50"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             onClick={onClose}
           />
           <motion.aside
             className="pit-noise fixed right-0 top-0 z-[61] flex h-full w-full flex-col overflow-y-auto bg-[#15151E] shadow-2xl sm:w-[420px]"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             style={{ borderLeft: `4px solid ${row.color}` }}
           >
             <div className="flex items-start justify-between p-6">
               <div>
                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: row.color, display: "inline-block" }} />
-                <h2 className="mt-2 text-2xl font-extrabold uppercase tracking-tight text-white">
-                  {row.name}
-                </h2>
-                <p className="mt-1 text-sm text-[#A0A0B0]">
-                  {row.nationality} · {carInfo?.car ?? "—"}
-                </p>
+                <h2 className="mt-2 text-2xl font-extrabold uppercase tracking-tight text-white">{row.name}</h2>
+                <p className="mt-1 text-sm text-[#A0A0B0]">{row.nationality}</p>
               </div>
               <button
                 onClick={onClose}
@@ -340,31 +293,7 @@ function TeamDrawer({ row, onClose }: { row: TeamRow | null; onClose: () => void
               ))}
             </div>
 
-            <div className="px-6 py-6">
-              <SectionLabel dark>Drivers</SectionLabel>
-              <div className="mt-3 space-y-2">
-                {(teamDrivers.length ? teamDrivers : []).map((d) => (
-                  <div key={d.code} className="flex items-center gap-3 rounded-lg bg-[#1E1E2E] p-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-full bg-[#15151E] text-sm">
-                      {d.flag}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">
-                        {d.first} {d.last}
-                      </p>
-                      <p className="text-xs text-[#A0A0B0]">
-                        {d.points} pts · {d.wins} wins
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {teamDrivers.length === 0 && (
-                  <p className="text-sm text-[#A0A0B0]">Driver line-up unavailable.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="px-6 pb-8">
+            <div className="px-6 pb-8 pt-6">
               <SectionLabel dark>Last 5 Rounds</SectionLabel>
               <div className="mt-3">
                 <ResultPills pills={row.last5} />
